@@ -14,6 +14,7 @@ TODO: for supervised feature selection one should also pass
 # External imports
 import numpy as np
 import scipy    
+from scipy.stats import spearmanr
 
 # Internal imports
 import dataset
@@ -70,3 +71,51 @@ def top_from_file (df, n, **kwargs):
     with open(filepath) as f:
         lines = f.readlines()
     return list(filter(lambda x: x in df.columns, map(lambda x: x.split(sep)[0], lines)))[:n]
+
+def max_correlation(df, n, **kwargs):
+    '''
+    Input expression dataframe and number n, return list
+    of n selected features
+    Uses Spearman correlation to select the most important genes
+    TODO: for supervised feature selection one should also pass
+    subset of datasets for feature selection
+    '''
+    datasets = kwargs["datasets"]
+
+    df_subset = df.loc[df["Dataset"].isin(datasets)]
+    X = df_subset.drop(columns=["Class", "Dataset", "Dataset type"]).to_numpy()
+    Y = df_subset["Class"].to_numpy()
+    n_genes = X.shape[1]
+    corr_coeff = np.zeros(n_genes)
+    for i in range(n_genes):
+        corr, pval =  spearmanr(X[:,i], Y)
+        corr_coeff[i] = corr
+
+    features = df_subset.drop(columns=["Class", "Dataset", "Dataset type"]).columns
+
+    return [feature for feature, corr_coeff in sorted(zip(features, corr_coeff), key=lambda x: x[1], reverse=True)][0:n]
+
+
+def min_p_value(df, n, **kwargs):
+    '''
+    Input expression dataframe and number n, return list
+    of n selected features
+    Uses Spearman p-value to select most important genes
+    TODO: for supervised feature selection one should also pass
+    subset of datasets for feature selection
+    '''
+    datasets = kwargs["datasets"]
+
+    df_subset = df.loc[df["Dataset"].isin(datasets)]
+    X = df_subset.drop(columns=["Class", "Dataset", "Dataset type"]).to_numpy()
+    Y = df_subset["Class"].to_numpy()
+    n_genes = X.shape[1]
+    p_values = np.zeros(n_genes)
+    for i in range(n_genes):
+        corr, pval =  spearmanr(X[:,i], Y)
+        p_values[i] = pval
+
+    features = df_subset.drop(columns=["Class", "Dataset", "Dataset type"]).columns
+
+    return [feature for feature, p_values in sorted(zip(features, p_values), key=lambda x: x[1], reverse=False)][0:n]
+
