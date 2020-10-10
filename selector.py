@@ -1,7 +1,7 @@
 """
-Feature pre-selection functions
+Feature selection functions
 
-Every feature pre-selection function inputs expression dataframe and number n,
+Every feature selection function inputs expression dataframe and number n,
 and returns list of features:
 
 def selector(df, n, **kwargs):
@@ -57,3 +57,16 @@ def pubmed (df, n, **kwargs):
     genes = df.columns.to_numpy()
     pubmed_df = dataset.pubmed.filter(items=genes, axis=0).sort_values(by='refs_num', ascending=False)
     return pubmed_df[:n].index.to_numpy()
+
+def top_from_file (df, n, **kwargs):
+    '''
+    Select n top features from a file
+    Lines format in the file: <feature><sep><any info>
+    By default <sep> is any whitespace
+    '''
+    filepath = kwargs["file"]
+    sep = kwargs.get("sep", None)
+    
+    with open(filepath) as f:
+        lines = f.readlines()
+    return list(filter(lambda x: x in df.columns, map(lambda x: x.split(sep)[0], lines)))[:n]
