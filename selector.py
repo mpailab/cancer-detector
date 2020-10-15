@@ -75,11 +75,22 @@ def top_from_file (df, n, **kwargs):
 def nt_diff (df, n, **kwargs):
     '''
     Select n features with respect to difference between normal and tumor expressions 
-    diff: function (n, t -> float), where n, t are np.arrays of equal length
-    
-    TODO: built-in variants for diff fucntion
+    diff: int or function (n, t -> float), where n, t are np.arrays of equal length
     '''
-    diff = kwargs["diff"]
+    diff = kwargs.get("diff", 0)
+    
+    g_mean = lambda ar: ar.prod() ** (1. / ar.size)
+    a_mean = lambda ar: ar.sum() / ar.size
+    default = {
+        0: lambda n, t: g_mean(np.absolute(t - n) / n),
+        1: lambda n, t: g_mean(np.absolute(t - n) / t),
+        2: lambda n, t: abs(a_mean(t - n)),
+        3: lambda n, t: a_mean(np.absolute(t - n)),
+        4: lambda n, t: g_mean(t / n),
+        5: lambda n, t: g_mean(n / t),
+        6: lambda n, t: max(np.absolute(t - n))
+        }
+    diff = default[diff] if diff in default.keys() else diff
     
     df_normal = dataset.normal()
     df_tumor = dataset.tumor()
@@ -95,6 +106,7 @@ def nt_diff (df, n, **kwargs):
     genes = list(filter(lambda g: str(dist[g]) not in ['nan', 'inf', '-inf'] , genes))    
     genes.sort(key = lambda g: dist[g], reverse=True)
     
+    [print("{} : {}".format(g, dist[g])) for g in genes]
     return genes[:n]
 
 def max_correlation(df, n, **kwargs):
