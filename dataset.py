@@ -58,7 +58,7 @@ def tumor (df=tcga_nt):
 # columns: genes
 # rows: cell lines
 _geffect_file = os.path.join(option.database, 'Achilles_gene_effect.csv')
-if os.path.isfile(_tcga_nt_file):
+if os.path.isfile(_geffect_file):
     geffect = pd.read_csv( _geffect_file, index_col=0)
     geffect = geffect.rename(columns=lambda x: re.sub(r'(.*) \([0-9]*\)',r'\1',x))
 else:

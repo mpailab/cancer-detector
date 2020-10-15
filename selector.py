@@ -72,6 +72,31 @@ def top_from_file (df, n, **kwargs):
         lines = f.readlines()
     return list(filter(lambda x: x in df.columns, map(lambda x: x.split(sep)[0], lines)))[:n]
 
+def nt_diff (df, n, **kwargs):
+    '''
+    Select n features with respect to difference between normal and tumor expressions 
+    diff: function (n, t -> float), where n, t are np.arrays of equal length
+    
+    TODO: built-in variants for diff fucntion
+    '''
+    diff = kwargs["diff"]
+    
+    df_normal = dataset.normal()
+    df_tumor = dataset.tumor()
+    if df_normal is None or df_tumor is None:
+        return []
+
+    genes = [ g for g in df if g in df_normal.index and 
+                               any(df_normal[p][g] != df_tumor[p][g] for p in df_normal) ]
+    df_normal = df_normal.filter(items=genes, axis=0)
+    df_tumor = df_tumor.filter(items=genes, axis=0)
+    
+    dist = {g : diff(df_normal.loc[g], df_tumor.loc[g]) for g in genes}
+    genes = list(filter(lambda g: str(dist[g]) not in ['nan', 'inf', '-inf'] , genes))    
+    genes.sort(key = lambda g: dist[g], reverse=True)
+    
+    return genes[:n]
+
 def max_correlation(df, n, **kwargs):
     '''
     Input expression dataframe and number n, return list
