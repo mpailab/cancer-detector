@@ -15,6 +15,10 @@ TODO: for supervised feature selection one should also pass
 import numpy as np
 import scipy    
 from scipy.stats import spearmanr
+from sklearn.svm import LinearSVC
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.datasets import make_classification
 
 # Internal imports
 import dataset
@@ -188,6 +192,41 @@ def min_p_value(df, n, **kwargs):
     features = df_subset.drop(columns=["Class", "Dataset", "Dataset type"]).columns
 
     return [feature for feature, p_values in sorted(zip(features, p_values), key=lambda x: x[1], reverse=False)][0:n]
+
+def linearSVC(df, n, **kwargs):
+    '''
+    Select n features with respect to coefficients of LinearSVC.
+    '''
+
+    datasets = kwargs.get("datasets", None)
+    _df = df if datasets is None else df.loc[df["Dataset"].isin(datasets)]
+    genes = _df.drop(columns=["Class", "Dataset", "Dataset type"]).columns.to_numpy()
+
+    X = _df.drop(columns=["Class", "Dataset", "Dataset type"]).to_numpy()
+    y = _df["Class"].to_numpy()
+
+    c_best = 1.0
+    delta = float("inf")
+    for c in np.logspace(-4, 4, 9):
+        clf = make_pipeline( StandardScaler(),
+                             LinearSVC( penalty='l1', C=c, dual=False))
+        clf.fit(X, y)
+        coef = clf.named_steps['linearsvc'].coef_
+        coef = np.resize(coef,(coef.shape[1],))
+        m = len(np.nonzero(coef)[0])
+        if n <= m and delta > m - n:
+            delta = m - n
+            c_best = c
+
+    clf = make_pipeline( StandardScaler(),
+                         LinearSVC( penalty='l1', C=c_best, dual=False))
+    clf.fit(X, y)
+    coef = clf.named_steps['linearsvc'].coef_
+    coef = np.resize(coef,(coef.shape[1],))
+    ind  = np.nonzero(coef)[0]
+    np.random.shuffle(ind)
+
+    return genes[ind[:n]]
 
 ##########################################################################################
 
