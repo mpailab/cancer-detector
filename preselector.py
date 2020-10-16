@@ -46,3 +46,42 @@ def mammaprint (df, **kwargs):
     Select mammaprint genes
     '''
     return [ g for g in df if g in feature.mammaprint ]
+
+##########################################################################################
+
+HASH = {
+    'brca'              : brca,
+    'tcga'              : tcga,
+    'good_genes'        : good_genes,
+    'super_good_genes'  : super_good_genes,
+    'oncotype_dx'       : oncotype_dx,
+    'mammaprint'        : mammaprint
+}
+
+def get (name):
+    '''
+    Get preselector by name
+
+    Returns:
+        a preselector function if name is its name;
+        None, otherwise.
+    '''
+    return HASH[name] if name in HASH else None
+
+def funcs ():
+    '''
+    Get all avaliable preselectors
+
+    Returns:
+        list of functions
+    '''
+    return list(HASH.values())
+
+def names ():
+    '''
+    Get names of all avaliable preselectors
+
+    Returns:
+        list of strings
+    '''
+    return list(HASH.keys())

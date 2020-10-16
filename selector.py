@@ -38,13 +38,20 @@ def nt_pvalue (df, n, **kwargs):
 
     return genes[ind[:n]]
 
-def geffect (df, n, cell_lines=dataset.breast_cell_lines, **kwargs):
+def geffect (df, n, **kwargs):
     '''
     Select n features with respect to gene effect
+
+    Parameters:
+
+    cell_lines : list or numpy array, default dataset.breast_cell_lines
+
+        The cell lines to filter on gene effect table
     '''
     if dataset.geffect is None:
         return []
 
+    cell_lines = kwargs.get("cell_lines", dataset.breast_cell_lines)
     gene_effect = dataset.geffect.loc[cell_lines].mean(axis=0).sort_values()
     return gene_effect[:n].index.to_numpy()
 
@@ -125,7 +132,7 @@ def max_correlation(df, n, **kwargs):
     n_genes = X.shape[1]
     corr_coeff = np.zeros(n_genes)
     for i in range(n_genes):
-        corr, pval =  spearmanr(X[:,i], Y)
+        corr, _ =  spearmanr(X[:,i], Y)
         corr_coeff[i] = corr
 
     features = df_subset.drop(columns=["Class", "Dataset", "Dataset type"]).columns
@@ -149,10 +156,49 @@ def min_p_value(df, n, **kwargs):
     n_genes = X.shape[1]
     p_values = np.zeros(n_genes)
     for i in range(n_genes):
-        corr, pval =  spearmanr(X[:,i], Y)
+        _, pval =  spearmanr(X[:,i], Y)
         p_values[i] = pval
 
     features = df_subset.drop(columns=["Class", "Dataset", "Dataset type"]).columns
 
     return [feature for feature, p_values in sorted(zip(features, p_values), key=lambda x: x[1], reverse=False)][0:n]
 
+##########################################################################################
+
+HASH = {
+    'nt_pvalue'         : nt_pvalue,
+    'geffect'           : geffect,
+    'pubmed'            : pubmed,
+    'top_from_file'     : top_from_file,
+    'nt_diff'           : nt_diff,
+    'max_correlation'   : max_correlation,
+    'min_p_value'       : min_p_value
+}
+
+def get (name):
+    '''
+    Get selector by name
+
+    Returns:
+        a selector function if name is its name;
+        None, otherwise.
+    '''
+    return HASH[name] if name in HASH else None
+
+def funcs ():
+    '''
+    Get all avaliable selectors
+
+    Returns:
+        list of functions
+    '''
+    return list(HASH.values())
+
+def names ():
+    '''
+    Get names of all avaliable selectors
+
+    Returns:
+        list of strings
+    '''
+    return list(HASH.keys())
