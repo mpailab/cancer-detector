@@ -19,6 +19,32 @@ from scipy.stats import spearmanr
 # Internal imports
 import dataset
 
+def pvalue(df, n, **kwargs):
+    '''
+    Select n features with respect to p-values of the T-test for relapse 
+    and non-relapse samples.
+    '''
+
+    datasets = kwargs.get("datasets", None)
+    _df = df if datasets is None else df.loc[df["Dataset"].isin(datasets)]
+    genes = _df.drop(columns=["Class", "Dataset", "Dataset type"]).columns.to_numpy()
+
+    X = _df.loc[df["Class"] == 1].drop(columns=["Class", "Dataset", "Dataset type"]).to_numpy()
+    Y = _df.loc[df["Class"] == 0].drop(columns=["Class", "Dataset", "Dataset type"]).to_numpy()
+
+    if X.shape[0] < Y.shape[0]:
+        index = np.random.choice(Y.shape[0], X.shape[0], replace=False)
+        Y = Y[index]
+
+    if X.shape[0] > Y.shape[0]:
+        index = np.random.choice(X.shape[0], Y.shape[0], replace=False)
+        X = X[index]
+
+    t_test_results = scipy.stats.ttest_ind(X, Y, axis=0)
+    ind = np.argsort(t_test_results.pvalue)
+
+    return genes[ind[:n]]
+
 def nt_pvalue (df, n, **kwargs):
     '''
     Select n features with respect to normal-tumor pvalues
