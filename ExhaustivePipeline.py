@@ -7,7 +7,8 @@ class ExhaustivePipeline:
         feature_pre_selector, feature_pre_selector_kwargs,
         feature_selector, feature_selector_kwargs,
         preprocessor, preprocessor_kwargs,
-        classifier, classifier_kwargs
+        classifier, classifier_kwargs, classifier_CV_ranges,
+        scoring_functions, main_scoring_function
     ):
         '''
         df: pandas dataframe. Rows represent samples, columns represent features (e.g. genes).
@@ -20,6 +21,8 @@ class ExhaustivePipeline:
             -  "n": number of features for feature selection
             -  "k": tuple size for exhaustive search
         '''
+
+        # TODO: add default values for some arguments
 
         self.df = df
         self.n_k = n_k
@@ -35,7 +38,11 @@ class ExhaustivePipeline:
         self.preprocessor_kwargs = preprocessor_kwargs
 
         self.classifier = classifier
-        self.classifier_kwargs = classifier_kwargs
+        self.classifier_kwargs = classifier_kwargs  # Fixed parameters
+        self.classifier_CV_ranges = classifier_CV_ranges  # e.g. {"C": np.logspace(-4, 4, 9, base=4)}
+
+        self.scoring_functions = scoring_functions  # e.g. {"min_TPR_TNR": fun(y_true, y_pred), "TPR": ..., ...}
+        self.main_scoring_function = main_scoring_function  # e.g. "min_TPR_TNR"
 
     def run(self):
         # First, pre-select features
@@ -49,15 +56,59 @@ class ExhaustivePipeline:
 
             # TODO: this loop should be run in multiple processes
             for feature_subset in itertools.combinations(features, k):
+                # Extract training set
                 df_train = df_selected.loc[df_selected["Dataset type"] == "Training", feature_subset + ["Class"]]
                 X_train = df_train.drop(columns=["Class"]).to_numpy()
                 y_train = df_train["Class"].to_numpy()
 
+                # Fit preprocessor and transform training set
                 self.preprocessor.fit(X_train, **self.preprocessor_kwargs)
                 X_train = self.preprocessor.transform(X_train)
 
-                # TODO: train classifier (with cross-validated parameters)
-                # TODO: evaluate performance on EACH dataset and store results
+                # Fit classifier with CV search of unknown parameters
+                classifier = self.classifier(**classifier_kwargs)
+
+                # TODO: number of splits as pipeline parameter
+                # TODO: seed as pipeline parameter
+                splitter = StratifiedKFold(n_splits=5, shuffle=True, random_state=17)
+                searcher = GridSearchCV(
+                    classifier,
+                    self.classifier_CV_ranges,
+                    scoring=self.scoring_functions,
+                    cv=splitter,
+                    refit=False,
+                    iid=False
+                )
+                searcher.fit(X_train, y_train)
+
+                all_params = searcher.cv_results_["params"]
+                mean_test_scorings = {s: searcher.cv_results_["mean_test_" + s] for s in self.scoring_functions}
+                best_ind = np.argmax(mean_test_scorings[self.main_scoring_function])
+                best_params = {param: all_params[max_ind][param] for param in all_params[max_ind]}
+
+                # Refit classifier with best parameters
+                classifier = self.classifier(**classifier_kwargs, **best_params)
+                classifier.fit(X_train, y_train)
+
+                '''
+                hits = 0
+                for dataset in datasets:
+                    df_test = df_selected.loc[df_selected["Dataset"] == dataset, feature_subset + ["Class"]]
+                    X_test = df_train.drop(columns=["Class"]).to_numpy()
+                    y_test = df_train["Class"].to_numpy()
+                    X_test = self.preprocessor.transform(X_test)
+
+                    results = utils.test_classifier(clf, X_test, y_test)
+                    if len(list(filter(lambda x: x >= 0.65, results))) == 4:
+                        hits += 1
+
+                    print("\t".join([data[i][3]] + ["{:.2f}".format(v) for v in results]), file=f_out)
+
+                print("\t".join(
+                    ["Summary"] + gs_subset + [str(hits)] + pr_subset + ["{:.2f}".format(v) for v in clf.coef_[0]]),
+                      file=f_out)
+                print("", file=f_out, flush=True)
+                '''
 
 
 def feature_pre_selector_template(df, **kwargs):
