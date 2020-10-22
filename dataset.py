@@ -21,7 +21,7 @@ else:
 # TCGA dataset
 # columns: genes
 # rows: patients
-_tcga_file = os.path.join(option.database, 'BreastCancer/TCGA.tsv')
+_tcga_file = os.path.join(option.database, 'TCGA.tsv')
 if os.path.isfile(_tcga_file):
     tcga = pd.read_csv( _tcga_file, sep='\t', index_col=0)
 else:
