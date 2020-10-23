@@ -129,7 +129,8 @@ def nt_diff (df, n, **kwargs):
         5: lambda n, t: g_mean(n / t),
         6: lambda n, t: max(np.absolute(t - n))
         }
-    diff = default[diff] if diff in default.keys() else diff
+    if diff in default.keys():
+        diff = default[diff]
     
     df_normal = dataset.normal()
     df_tumor = dataset.tumor()
@@ -145,7 +146,7 @@ def nt_diff (df, n, **kwargs):
     genes = list(filter(lambda g: str(dist[g]) not in ['nan', 'inf', '-inf'] , genes))    
     genes.sort(key = lambda g: dist[g], reverse=True)
     
-    [print("{} : {}".format(g, dist[g])) for g in genes]
+    #[print("{} : {}".format(g, dist[g])) for g in genes]
     return genes[:n]
 
 def max_correlation(df, n, **kwargs):
