@@ -1,14 +1,24 @@
+import pandas as pd
+import numpy as np
+
 import itertools
+
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
+
+from FeatureSelectors import t_test
 
 
 class ExhaustivePipeline:
     def __init__(
         self, df, n_k, n_threads,
         feature_pre_selector=None, feature_pre_selector_kwargs={},
-        feature_selector=None, feature_selector_kwargs={},
-        preprocessor, preprocessor_kwargs,
-        classifier, classifier_kwargs, classifier_CV_ranges, classifier_CV_folds,
-        scoring_functions, main_scoring_function, main_scoring_threshold
+        feature_selector=t_test, feature_selector_kwargs={},
+        preprocessor=StandardScaler, preprocessor_kwargs={},
+        classifier=SVC, classifier_kwargs={"kernel": "linear", "class_weight": "balanced"},
+        classifier_CV_ranges={"C": np.logspace(-4, 4, 9, base=4)}, classifier_CV_folds=5,
+        scoring_functions={"min_TPR_TNR": lambda y_true, y_pred: 0.99},
+        main_scoring_function="min_TPR_TNR", main_scoring_threshold=0.65
     ):
         '''
         df: pandas dataframe. Rows represent samples, columns represent features (e.g. genes).
@@ -21,8 +31,7 @@ class ExhaustivePipeline:
             -  "n": number of features for feature selection
             -  "k": tuple size for exhaustive search
         '''
-
-        # TODO: add default values for some arguments
+        # TODO: add default values for scoring functions
 
         self.df = df
         self.n_k = n_k
