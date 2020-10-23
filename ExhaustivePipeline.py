@@ -7,8 +7,8 @@ class ExhaustivePipeline:
         feature_pre_selector, feature_pre_selector_kwargs,
         feature_selector, feature_selector_kwargs,
         preprocessor, preprocessor_kwargs,
-        classifier, classifier_kwargs, classifier_CV_ranges,
-        scoring_functions, main_scoring_function
+        classifier, classifier_kwargs, classifier_CV_ranges, classifier_CV_folds,
+        scoring_functions, main_scoring_function, main_scoring_threshold
     ):
         '''
         df: pandas dataframe. Rows represent samples, columns represent features (e.g. genes).
@@ -40,9 +40,11 @@ class ExhaustivePipeline:
         self.classifier = classifier
         self.classifier_kwargs = classifier_kwargs  # Fixed parameters
         self.classifier_CV_ranges = classifier_CV_ranges  # e.g. {"C": np.logspace(-4, 4, 9, base=4)}
+        self.classifier_CV_folds = classifier_CV_folds
 
         self.scoring_functions = scoring_functions  # e.g. {"min_TPR_TNR": fun(y_true, y_pred), "TPR": ..., ...}
         self.main_scoring_function = main_scoring_function  # e.g. "min_TPR_TNR"
+        self.main_scoring_threshold = main_scoring_threshold
 
     def run(self):
         # First, pre-select features
@@ -55,22 +57,23 @@ class ExhaustivePipeline:
             df_selected = df_pre_selected[features + ["Class", "Dataset", "Dataset type"]]
 
             # TODO: this loop should be run in multiple processes
-            for feature_subset in itertools.combinations(features, k):
+            results = []
+            for features_subset in itertools.combinations(features, k):
                 # Extract training set
-                df_train = df_selected.loc[df_selected["Dataset type"] == "Training", feature_subset + ["Class"]]
+                df_train = df_selected.loc[df_selected["Dataset type"] == "Training", features_subset + ["Class"]]
                 X_train = df_train.drop(columns=["Class"]).to_numpy()
                 y_train = df_train["Class"].to_numpy()
 
                 # Fit preprocessor and transform training set
-                self.preprocessor.fit(X_train, **self.preprocessor_kwargs)
-                X_train = self.preprocessor.transform(X_train)
+                preprocessor = self.preprocessor(**self.preprocessor_kwargs)
+                preprocessor.fit(X_train)
+                X_train = preprocessor.transform(X_train)
 
                 # Fit classifier with CV search of unknown parameters
                 classifier = self.classifier(**classifier_kwargs)
 
-                # TODO: number of splits as pipeline parameter
                 # TODO: seed as pipeline parameter
-                splitter = StratifiedKFold(n_splits=5, shuffle=True, random_state=17)
+                splitter = StratifiedKFold(n_splits=self.classifier_CV_folds, shuffle=True, random_state=17)
                 searcher = GridSearchCV(
                     classifier,
                     self.classifier_CV_ranges,
@@ -90,25 +93,29 @@ class ExhaustivePipeline:
                 classifier = self.classifier(**classifier_kwargs, **best_params)
                 classifier.fit(X_train, y_train)
 
-                '''
-                hits = 0
-                for dataset in datasets:
-                    df_test = df_selected.loc[df_selected["Dataset"] == dataset, feature_subset + ["Class"]]
-                    X_test = df_train.drop(columns=["Class"]).to_numpy()
-                    y_test = df_train["Class"].to_numpy()
-                    X_test = self.preprocessor.transform(X_test)
+                item = {"Features subset": features_subset, "Scores": {}}
+                filtration_passed = True
+                for dataset, dataset_type in df_selected[["Dataset", "Dataset type"]].drop_duplicates().to_numpy():
+                    df_test = df_selected.loc[df_selected["Dataset"] == dataset, features_subset + ["Class"]]
+                    X_test = df_test.drop(columns=["Class"]).to_numpy()
+                    y_test = df_test["Class"].to_numpy()
 
-                    results = utils.test_classifier(clf, X_test, y_test)
-                    if len(list(filter(lambda x: x >= 0.65, results))) == 4:
-                        hits += 1
+                    # Normalize dataset using preprocessor fit on training set
+                    X_test = preprocessor.transform(X_test)
 
-                    print("\t".join([data[i][3]] + ["{:.2f}".format(v) for v in results]), file=f_out)
+                    y_pred = classifier.predict(X_test)
+                    item["Scores"][dataset] = {}
+                    for s in self.scoring_functions:
+                        item["Scores"][dataset][s] = self.scoring_functions[s](y_test, y_pred)
 
-                print("\t".join(
-                    ["Summary"] + gs_subset + [str(hits)] + pr_subset + ["{:.2f}".format(v) for v in clf.coef_[0]]),
-                      file=f_out)
-                print("", file=f_out, flush=True)
-                '''
+                    if (
+                        dataset_type.isin(["Training", "Filtration"]) and
+                        item["Scores"][dataset][self.main_scoring_function] < self.main_scoring_threshold
+                    ):
+                        filtration_passed = False
+
+                if filtration_passed:
+                    results.append(item)
 
 
 def feature_pre_selector_template(df, **kwargs):
