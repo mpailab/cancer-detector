@@ -12,8 +12,6 @@ TODO: for supervised feature selection one should also pass
 """
 
 # External imports
-import sys
-
 import pandas as pd
 import numpy as np
 
@@ -33,8 +31,8 @@ import dataset
 
 def t_test(df, n, **kwargs):
     '''
-    Select n features with respect to p-values of the T-test for relapse
-    and non-relapse samples.
+    Select n features with respect to p-values of the t-test
+    for relapse and non-relapse samples
     '''
 
     datasets = kwargs.get("datasets", None)
@@ -47,6 +45,27 @@ def t_test(df, n, **kwargs):
     y = df_subset["Class"].to_numpy()
 
     t_statistics, pvalues = ttest_ind(X[y == 0], X[y == 1], axis=0)
+    features = df_subset.drop(columns=["Class", "Dataset", "Dataset type"]).columns
+
+    return [feature for feature, pvalue in sorted(zip(features, pvalues), key=lambda x: x[1])][0:n]
+
+
+def spearman_correlation(df, n, **kwargs):
+    '''
+    Select n features with respect to Spearman correlation
+    between features and target variable
+    '''
+
+    datasets = kwargs.get("datasets", None)
+    if not datasets:
+        # By default, use all datasets except validation one
+        datasets = np.unique(df.loc[df["Dataset type"] != "Validation", "Dataset"])
+
+    df_subset = df.loc[df["Dataset"].isin(datasets)]
+    X = df_subset.drop(columns=["Class", "Dataset", "Dataset type"]).to_numpy()
+    y = df_subset["Class"].to_numpy()
+
+    pvalues = [spearmanr(X[:, j], y).pvalue for j in range(X.shape[1])]
     features = df_subset.drop(columns=["Class", "Dataset", "Dataset type"]).columns
 
     return [feature for feature, pvalue in sorted(zip(features, pvalues), key=lambda x: x[1])][0:n]
@@ -150,55 +169,6 @@ def nt_diff (df, n, **kwargs):
     #[print("{} : {}".format(g, dist[g])) for g in genes]
     return genes[:n]
 
-def max_correlation(df, n, **kwargs):
-    '''
-    Input expression dataframe and number n, return list
-    of n selected features
-    Uses Spearman correlation to select the most important genes
-    TODO: for supervised feature selection one should also pass
-    subset of datasets for feature selection
-    '''
-    datasets = kwargs["datasets"]
-
-    df_subset = df.loc[df["Dataset"].isin(datasets)]
-    X = df_subset.drop(columns=["Class", "Dataset", "Dataset type"]).to_numpy()
-    Y = df_subset["Class"].to_numpy()
-    n_genes = X.shape[1]
-    corr_coeff = np.zeros(n_genes)
-    for i in range(n_genes):
-        corr, _ =  spearmanr(X[:,i], Y)
-        corr_coeff[i] = corr
-
-    features = df_subset.drop(columns=["Class", "Dataset", "Dataset type"]).columns
-
-    return [feature for feature, corr_coeff in sorted(zip(features, corr_coeff), key=lambda x: x[1], reverse=True)][0:n]
-
-
-def min_p_value(df, n, **kwargs):
-    '''
-    Input expression dataframe and number n, return list
-    of n selected features
-    Uses Spearman p-value to select most important genes
-    TODO: for supervised feature selection one should also pass
-    subset of datasets for feature selection
-    '''
-    datasets = kwargs.get("datasets", None)
-    if not datasets:
-        # By default, use all datasets except validation one
-        datasets = np.unique(df.loc[df["Dataset type"] != "Validation", "Dataset"])
-
-    df_subset = df.loc[df["Dataset"].isin(datasets)]
-    X = df_subset.drop(columns=["Class", "Dataset", "Dataset type"]).to_numpy()
-    Y = df_subset["Class"].to_numpy()
-    n_genes = X.shape[1]
-    p_values = np.zeros(n_genes)
-    for i in range(n_genes):
-        _, pval =  spearmanr(X[:,i], Y)
-        p_values[i] = pval
-
-    features = df_subset.drop(columns=["Class", "Dataset", "Dataset type"]).columns
-
-    return [feature for feature, p_values in sorted(zip(features, p_values), key=lambda x: x[1], reverse=False)][0:n]
 
 def boosting_shapley(df, n, **kwargs):
     '''
@@ -287,8 +257,8 @@ HASH = {
     'pubmed'            : pubmed,
     'top_from_file'     : top_from_file,
     'nt_diff'           : nt_diff,
-    'max_correlation'   : max_correlation,
-    'min_p_value'       : min_p_value
+    #'max_correlation'   : max_correlation,
+    #'min_p_value'       : min_p_value
 }
 
 def get (name):
@@ -321,7 +291,9 @@ def names ():
 
 
 if __name__ == "__main__":
+    import sys
     df = pd.read_csv(sys.argv[1], sep="\t", index_col=0)
-    print(df)
 
+    print(df)
     print(t_test(df, 20))
+    print(spearman_correlation(df, 20))

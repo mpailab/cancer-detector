@@ -193,8 +193,9 @@ class Classifier_template:
 
 
 if __name__ == "__main__":
-    df = pd.read_csv("~/tutorial/data/new/BRCA_U133A_filtered.tsv", sep="\t", index_col=0)
-    n_k = pd.DataFrame({"n": [30], "k": [29]})
+    import sys
+    df = pd.read_csv(sys.argv[1], sep="\t", index_col=0)
+    n_k = pd.DataFrame({"n": [10], "k": [9]})
 
     pipeline = ExhaustivePipeline(df, n_k)
     pipeline.run()
