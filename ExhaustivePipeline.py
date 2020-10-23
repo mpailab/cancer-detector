@@ -5,7 +5,7 @@ class ExhaustivePipeline:
     def __init__(
         self, df, n_k, n_threads,
         feature_pre_selector=None, feature_pre_selector_kwargs={},
-        feature_selector, feature_selector_kwargs,
+        feature_selector=None, feature_selector_kwargs={},
         preprocessor, preprocessor_kwargs,
         classifier, classifier_kwargs, classifier_CV_ranges, classifier_CV_folds,
         scoring_functions, main_scoring_function, main_scoring_threshold
@@ -57,8 +57,11 @@ class ExhaustivePipeline:
 
         # Start iterating over n, k pairs
         for n, k in zip(self.n_k["n"], self.n_k["k"]):
-            features = self.feature_selector(df_pre_selected, n, **self.feature_selector_kwargs)
-            df_selected = df_pre_selected[features + ["Class", "Dataset", "Dataset type"]]
+            if self.feature_selector:
+                features = self.feature_selector(df_pre_selected, n, **self.feature_selector_kwargs)
+                df_selected = df_pre_selected[features + ["Class", "Dataset", "Dataset type"]].copy()
+            else:
+                df_selected = df_pre_selected.copy()
 
             # TODO: this loop should be run in multiple processes
             results = []
