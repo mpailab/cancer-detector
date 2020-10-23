@@ -1,7 +1,10 @@
 import pandas as pd
 import numpy as np
 
+from multiprocessing import Pool
+import math
 import itertools
+from natsort import natsorted
 
 from sklearn.model_selection import StratifiedKFold, GridSearchCV
 from sklearn.metrics import make_scorer
@@ -14,15 +17,14 @@ from sklearn.metrics import balanced_accuracy_score
 
 class ExhaustivePipeline:
     def __init__(
-        self, df, n_k,
-        n_threads=1,
+        self, df, n_k, n_processes=1,
         feature_pre_selector=None, feature_pre_selector_kwargs={},
         feature_selector=t_test, feature_selector_kwargs={},
         preprocessor=StandardScaler, preprocessor_kwargs={},
         classifier=SVC, classifier_kwargs={"kernel": "linear", "class_weight": "balanced"},
         classifier_CV_ranges={"C": np.logspace(-4, 4, 9, base=4)}, classifier_CV_folds=5,
-        scoring_functions={"min_TPR_TNR": balanced_accuracy_score},#lambda y_true, y_pred: 0.99},
-        main_scoring_function="min_TPR_TNR", main_scoring_threshold=0.65
+        scoring_functions={"BA": balanced_accuracy_score},#lambda y_true, y_pred: 0.99},
+        main_scoring_function="BA", main_scoring_threshold=0.65
     ):
         '''
         df: pandas dataframe. Rows represent samples, columns represent features (e.g. genes).
@@ -39,7 +41,7 @@ class ExhaustivePipeline:
 
         self.df = df
         self.n_k = n_k
-        self.n_threads = n_threads
+        self.n_processes = n_processes
 
         self.feature_pre_selector = feature_pre_selector
         self.feature_pre_selector_kwargs = feature_pre_selector_kwargs
@@ -63,80 +65,110 @@ class ExhaustivePipeline:
         # First, pre-select features
         if self.feature_pre_selector:
             features = self.feature_pre_selector(self.df, **self.feature_pre_selector_kwargs)
-            df_pre_selected = self.df[features + ["Class", "Dataset", "Dataset type"]].copy()
         else:
-            df_pre_selected = self.df.copy()
+            features = self.df.columns.drop(["Class", "Dataset", "Dataset type"]).to_list()
+
+        df_pre_selected = self.df[features + ["Class", "Dataset", "Dataset type"]].copy()
 
         # Start iterating over n, k pairs
         for n, k in zip(self.n_k["n"], self.n_k["k"]):
             if self.feature_selector:
                 features = self.feature_selector(df_pre_selected, n, **self.feature_selector_kwargs)
-                df_selected = df_pre_selected[features + ["Class", "Dataset", "Dataset type"]].copy()
             else:
-                df_selected = df_pre_selected.copy()
+                features = df_pre_selected.columns.drop(["Class", "Dataset", "Dataset type"]).to_list()
 
-            # TODO: this loop should be run in multiple processes
-            results = []
-            for features_subset in itertools.combinations(features, k):
-                features_subset = list(features_subset)  # Convert list to tuple for convinience
+            df_selected = df_pre_selected[features + ["Class", "Dataset", "Dataset type"]].copy()
 
-                # Extract training set
-                df_train = df_selected.loc[df_selected["Dataset type"] == "Training", features_subset + ["Class"]]
-                X_train = df_train.drop(columns=["Class"]).to_numpy()
-                y_train = df_train["Class"].to_numpy()
+            feature_subsets = list(itertools.combinations(features, k))
+            chunk_size = math.ceil(len(feature_subsets) / self.n_processes)
+            process_args = []
+            for i in range(self.n_processes):
+                start = chunk_size * i
+                end = chunk_size * (i + 1) if i < self.n_processes - 1 else len(feature_subsets)
+                process_args.append((df_selected, feature_subsets[start:end]))
 
-                # Fit preprocessor and transform training set
-                preprocessor = self.preprocessor(**self.preprocessor_kwargs)
-                preprocessor.fit(X_train)
-                X_train = preprocessor.transform(X_train)
+            with Pool(self.n_processes) as p:
+                process_results = p.map(self.exhaustive_search_over_chunk, process_args, chunksize=1)
 
-                # Fit classifier with CV search of unknown parameters
-                classifier = self.classifier(**self.classifier_kwargs)
+            df_results = pd.concat(process_results, axis=0)
 
-                # TODO: seed as pipeline parameter
-                splitter = StratifiedKFold(n_splits=self.classifier_CV_folds, shuffle=True, random_state=17)
-                searcher = GridSearchCV(
-                    classifier,
-                    self.classifier_CV_ranges,
-                    scoring={s: make_scorer(self.scoring_functions[s]) for s in self.scoring_functions},
-                    cv=splitter,
-                    refit=False
-                )
-                searcher.fit(X_train, y_train)
+            return df_results
 
-                all_params = searcher.cv_results_["params"]
-                mean_test_scorings = {s: searcher.cv_results_["mean_test_" + s] for s in self.scoring_functions}
-                best_ind = np.argmax(mean_test_scorings[self.main_scoring_function])
-                best_params = {param: all_params[best_ind][param] for param in all_params[best_ind]}
+    def exhaustive_search_over_chunk(self, args):
+        # args is a tuple, this is how multiprocessing works
+        df_selected, feature_subsets = args
 
-                # Refit classifier with best parameters
-                classifier = self.classifier(**self.classifier_kwargs, **best_params)
-                classifier.fit(X_train, y_train)
+        results = []
+        for features_subset in feature_subsets:
+            features_subset = list(features_subset)  # Convert list to tuple for convinience
 
-                item = {"Features subset": features_subset, "Scores": {}}
-                filtration_passed = True
-                for dataset, dataset_type in df_selected[["Dataset", "Dataset type"]].drop_duplicates().to_numpy():
-                    df_test = df_selected.loc[df_selected["Dataset"] == dataset, features_subset + ["Class"]]
-                    X_test = df_test.drop(columns=["Class"]).to_numpy()
-                    y_test = df_test["Class"].to_numpy()
+            # Extract training set
+            df_train = df_selected.loc[df_selected["Dataset type"] == "Training", features_subset + ["Class"]]
+            X_train = df_train.drop(columns=["Class"]).to_numpy()
+            y_train = df_train["Class"].to_numpy()
 
-                    # Normalize dataset using preprocessor fit on training set
-                    X_test = preprocessor.transform(X_test)
+            # Fit preprocessor and transform training set
+            preprocessor = self.preprocessor(**self.preprocessor_kwargs)
+            preprocessor.fit(X_train)
+            X_train = preprocessor.transform(X_train)
 
-                    y_pred = classifier.predict(X_test)
-                    item["Scores"][dataset] = {}
-                    for s in self.scoring_functions:
-                        item["Scores"][dataset][s] = self.scoring_functions[s](y_test, y_pred)
+            # Fit classifier with CV search of unknown parameters
+            classifier = self.classifier(**self.classifier_kwargs)
 
-                    if (
-                        dataset_type in ["Training", "Filtration"] and
-                        item["Scores"][dataset][self.main_scoring_function] < self.main_scoring_threshold
-                    ):
-                        filtration_passed = False
+            # TODO: seed as pipeline parameter
+            splitter = StratifiedKFold(n_splits=self.classifier_CV_folds, shuffle=True, random_state=17)
+            searcher = GridSearchCV(
+                classifier,
+                self.classifier_CV_ranges,
+                scoring={s: make_scorer(self.scoring_functions[s]) for s in self.scoring_functions},
+                cv=splitter,
+                refit=False
+            )
+            searcher.fit(X_train, y_train)
 
-                if filtration_passed:
-                    results.append(item)
+            all_params = searcher.cv_results_["params"]
+            mean_test_scorings = {s: searcher.cv_results_["mean_test_" + s] for s in self.scoring_functions}
+            best_ind = np.argmax(mean_test_scorings[self.main_scoring_function])
+            best_params = {param: all_params[best_ind][param] for param in all_params[best_ind]}
 
+            # Refit classifier with best parameters
+            classifier = self.classifier(**self.classifier_kwargs, **best_params)
+            classifier.fit(X_train, y_train)
+
+            item = {"Features subset": features_subset, "Scores": {}}
+            filtration_passed = True
+            for dataset, dataset_type in df_selected[["Dataset", "Dataset type"]].drop_duplicates().to_numpy():
+                df_test = df_selected.loc[df_selected["Dataset"] == dataset, features_subset + ["Class"]]
+                X_test = df_test.drop(columns=["Class"]).to_numpy()
+                y_test = df_test["Class"].to_numpy()
+
+                # Normalize dataset using preprocessor fit on training set
+                X_test = preprocessor.transform(X_test)
+
+                y_pred = classifier.predict(X_test)
+                item["Scores"][dataset] = {}
+                for s in self.scoring_functions:
+                    item["Scores"][dataset][s] = self.scoring_functions[s](y_test, y_pred)
+
+                if (
+                    dataset_type in ["Training", "Filtration"] and
+                    item["Scores"][dataset][self.main_scoring_function] < self.main_scoring_threshold
+                ):
+                    filtration_passed = False
+
+            #if filtration_passed:
+            results.append(item)
+
+        df_results = pd.DataFrame(
+            columns=["{};{}".format(dataset, s) for dataset in natsorted(np.unique(df_selected["Dataset"])) for s in self.scoring_functions]
+        )
+        for item in results:
+            index = ";".join(item["Features subset"])
+            for dataset in item["Scores"]:
+                for s in item["Scores"][dataset]:
+                    df_results.loc[index, "{};{}".format(dataset, s)] = item["Scores"][dataset][s]
+
+        return df_results
 
 def feature_pre_selector_template(df, **kwargs):
     '''
@@ -195,7 +227,7 @@ class Classifier_template:
 if __name__ == "__main__":
     import sys
     df = pd.read_csv(sys.argv[1], sep="\t", index_col=0)
-    n_k = pd.DataFrame({"n": [10], "k": [9]})
+    n_k = pd.DataFrame({"n": [5], "k": [2]})
 
-    pipeline = ExhaustivePipeline(df, n_k)
+    pipeline = ExhaustivePipeline(df, n_k, n_processes=2)
     pipeline.run()
