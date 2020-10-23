@@ -224,8 +224,16 @@ class Classifier_template:
 if __name__ == "__main__":
     import sys
     df = pd.read_csv(sys.argv[1], sep="\t", index_col=0)
-    n_k = pd.DataFrame({"n": [5], "k": [2]})
+    #n_k = pd.DataFrame({"n": [10, 10], "k": [8, 9]})  # Several seconds test
+    n_k = pd.read_csv("n_k.tsv", sep="\t")
+    n_processes = 4
 
-    pipeline = ExhaustivePipeline(df, n_k, n_processes=2)
-    results = pipeline.run()
-    print(results)
+    import time
+    for _, row in n_k.iterrows():
+        n_k_subdf = pd.DataFrame({"n": [row["n"]], "k": [row["k"]]})
+
+        start_time = time.time()
+        pipeline = ExhaustivePipeline(df, n_k_subdf, n_processes=n_processes)
+        results = pipeline.run()
+        end_time = time.time()
+        print("Pipeline finished in {} seconds for n={}, k={} (n_processes = {})".format(end_time - start_time, row["n"], row["k"], n_processes))
