@@ -71,6 +71,21 @@ def spearman_correlation(df, n, **kwargs):
     return [feature for feature, pvalue in sorted(zip(features, pvalues), key=lambda x: x[1])][0:n]
 
 
+def top_from_file(df, n, **kwargs):
+    '''
+    Select n top features from a file
+    Lines format in the file: <feature><sep><any info>
+    By default <sep> is any whitespace
+    '''
+    path_to_file = kwargs["path_to_file"]
+    sep = kwargs.get("sep", None)
+
+    with open(path_to_file) as f:
+        lines = f.readlines()
+
+    return list(filter(lambda x: x in df.columns, map(lambda x: x.split(sep)[0], lines)))[:n]
+
+
 def nt_pvalue (df, n, **kwargs):
     '''
     Select n features with respect to normal-tumor pvalues
@@ -111,6 +126,7 @@ def pubmed (df, n, **kwargs):
     '''
     Select n features with respect to the number of pubmed references
     '''
+    # Плохая история, лучше делать raise exception
     if dataset.pubmed is None:
         return []
 
@@ -118,18 +134,6 @@ def pubmed (df, n, **kwargs):
     pubmed_df = dataset.pubmed.filter(items=genes, axis=0).sort_values(by='refs_num', ascending=False)
     return pubmed_df[:n].index.to_numpy()
 
-def top_from_file (df, n, **kwargs):
-    '''
-    Select n top features from a file
-    Lines format in the file: <feature><sep><any info>
-    By default <sep> is any whitespace
-    '''
-    filepath = kwargs["file"]
-    sep = kwargs.get("sep", None)
-
-    with open(filepath) as f:
-        lines = f.readlines()
-    return list(filter(lambda x: x in df.columns, map(lambda x: x.split(sep)[0], lines)))[:n]
 
 def nt_diff (df, n, **kwargs):
     '''
