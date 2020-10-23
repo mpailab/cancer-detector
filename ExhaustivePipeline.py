@@ -4,7 +4,7 @@ import itertools
 class ExhaustivePipeline:
     def __init__(
         self, df, n_k, n_threads,
-        feature_pre_selector, feature_pre_selector_kwargs,
+        feature_pre_selector=None, feature_pre_selector_kwargs={},
         feature_selector, feature_selector_kwargs,
         preprocessor, preprocessor_kwargs,
         classifier, classifier_kwargs, classifier_CV_ranges, classifier_CV_folds,
@@ -48,8 +48,12 @@ class ExhaustivePipeline:
 
     def run(self):
         # First, pre-select features
-        features = self.feature_pre_selector(self.df, **self.feature_pre_selector_kwargs)
-        df_pre_selected = self.df[features + ["Class", "Dataset", "Dataset type"]]
+        if self.feature_pre_selector:
+            features = self.feature_pre_selector(self.df, **self.feature_pre_selector_kwargs)
+            df_pre_selected = self.df[features + ["Class", "Dataset", "Dataset type"]].copy()
+        else:
+            df_pre_selected = self.df.copy()
+
 
         # Start iterating over n, k pairs
         for n, k in zip(self.n_k["n"], self.n_k["k"]):
