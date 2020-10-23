@@ -3,21 +3,25 @@ import numpy as np
 
 import itertools
 
+from sklearn.model_selection import StratifiedKFold, GridSearchCV
+from sklearn.metrics import make_scorer
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 
 from FeatureSelectors import t_test
 
+from sklearn.metrics import balanced_accuracy_score
 
 class ExhaustivePipeline:
     def __init__(
-        self, df, n_k, n_threads,
+        self, df, n_k,
+        n_threads=1,
         feature_pre_selector=None, feature_pre_selector_kwargs={},
         feature_selector=t_test, feature_selector_kwargs={},
         preprocessor=StandardScaler, preprocessor_kwargs={},
         classifier=SVC, classifier_kwargs={"kernel": "linear", "class_weight": "balanced"},
         classifier_CV_ranges={"C": np.logspace(-4, 4, 9, base=4)}, classifier_CV_folds=5,
-        scoring_functions={"min_TPR_TNR": lambda y_true, y_pred: 0.99},
+        scoring_functions={"min_TPR_TNR": balanced_accuracy_score},#lambda y_true, y_pred: 0.99},
         main_scoring_function="min_TPR_TNR", main_scoring_threshold=0.65
     ):
         '''
@@ -63,7 +67,6 @@ class ExhaustivePipeline:
         else:
             df_pre_selected = self.df.copy()
 
-
         # Start iterating over n, k pairs
         for n, k in zip(self.n_k["n"], self.n_k["k"]):
             if self.feature_selector:
@@ -75,6 +78,8 @@ class ExhaustivePipeline:
             # TODO: this loop should be run in multiple processes
             results = []
             for features_subset in itertools.combinations(features, k):
+                features_subset = list(features_subset)  # Convert list to tuple for convinience
+
                 # Extract training set
                 df_train = df_selected.loc[df_selected["Dataset type"] == "Training", features_subset + ["Class"]]
                 X_train = df_train.drop(columns=["Class"]).to_numpy()
@@ -86,27 +91,26 @@ class ExhaustivePipeline:
                 X_train = preprocessor.transform(X_train)
 
                 # Fit classifier with CV search of unknown parameters
-                classifier = self.classifier(**classifier_kwargs)
+                classifier = self.classifier(**self.classifier_kwargs)
 
                 # TODO: seed as pipeline parameter
                 splitter = StratifiedKFold(n_splits=self.classifier_CV_folds, shuffle=True, random_state=17)
                 searcher = GridSearchCV(
                     classifier,
                     self.classifier_CV_ranges,
-                    scoring=self.scoring_functions,
+                    scoring={s: make_scorer(self.scoring_functions[s]) for s in self.scoring_functions},
                     cv=splitter,
-                    refit=False,
-                    iid=False
+                    refit=False
                 )
                 searcher.fit(X_train, y_train)
 
                 all_params = searcher.cv_results_["params"]
                 mean_test_scorings = {s: searcher.cv_results_["mean_test_" + s] for s in self.scoring_functions}
                 best_ind = np.argmax(mean_test_scorings[self.main_scoring_function])
-                best_params = {param: all_params[max_ind][param] for param in all_params[max_ind]}
+                best_params = {param: all_params[best_ind][param] for param in all_params[best_ind]}
 
                 # Refit classifier with best parameters
-                classifier = self.classifier(**classifier_kwargs, **best_params)
+                classifier = self.classifier(**self.classifier_kwargs, **best_params)
                 classifier.fit(X_train, y_train)
 
                 item = {"Features subset": features_subset, "Scores": {}}
@@ -125,7 +129,7 @@ class ExhaustivePipeline:
                         item["Scores"][dataset][s] = self.scoring_functions[s](y_test, y_pred)
 
                     if (
-                        dataset_type.isin(["Training", "Filtration"]) and
+                        dataset_type in ["Training", "Filtration"] and
                         item["Scores"][dataset][self.main_scoring_function] < self.main_scoring_threshold
                     ):
                         filtration_passed = False
@@ -186,3 +190,11 @@ class Classifier_template:
 
     def predict(self, X):
         pass
+
+
+if __name__ == "__main__":
+    df = pd.read_csv("~/tutorial/data/new/BRCA_U133A_filtered.tsv", sep="\t", index_col=0)
+    n_k = pd.DataFrame({"n": [30], "k": [29]})
+
+    pipeline = ExhaustivePipeline(df, n_k)
+    pipeline.run()
