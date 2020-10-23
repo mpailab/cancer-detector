@@ -72,11 +72,7 @@ class ExhaustivePipeline:
 
         # Start iterating over n, k pairs
         for n, k in zip(self.n_k["n"], self.n_k["k"]):
-            if self.feature_selector:
-                features = self.feature_selector(df_pre_selected, n, **self.feature_selector_kwargs)
-            else:
-                features = df_pre_selected.columns.drop(["Class", "Dataset", "Dataset type"]).to_list()
-
+            features = self.feature_selector(df_pre_selected, n, **self.feature_selector_kwargs)
             df_selected = df_pre_selected[features + ["Class", "Dataset", "Dataset type"]].copy()
 
             feature_subsets = list(itertools.combinations(features, k))
@@ -156,8 +152,8 @@ class ExhaustivePipeline:
                 ):
                     filtration_passed = False
 
-            #if filtration_passed:
-            results.append(item)
+            if filtration_passed:
+                results.append(item)
 
         df_results = pd.DataFrame(
             columns=["{};{}".format(dataset, s) for dataset in natsorted(np.unique(df_selected["Dataset"])) for s in self.scoring_functions]
@@ -169,6 +165,7 @@ class ExhaustivePipeline:
                     df_results.loc[index, "{};{}".format(dataset, s)] = item["Scores"][dataset][s]
 
         return df_results
+
 
 def feature_pre_selector_template(df, **kwargs):
     '''
@@ -230,4 +227,5 @@ if __name__ == "__main__":
     n_k = pd.DataFrame({"n": [5], "k": [2]})
 
     pipeline = ExhaustivePipeline(df, n_k, n_processes=2)
-    pipeline.run()
+    results = pipeline.run()
+    print(results)
