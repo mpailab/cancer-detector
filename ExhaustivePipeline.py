@@ -12,8 +12,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 
 from FeatureSelectors import t_test
+from AccuracyMetrics import TPR, TNR, min_TPR_TNR
 
-from sklearn.metrics import balanced_accuracy_score
 
 class ExhaustivePipeline:
     def __init__(
@@ -23,8 +23,8 @@ class ExhaustivePipeline:
         preprocessor=StandardScaler, preprocessor_kwargs={},
         classifier=SVC, classifier_kwargs={"kernel": "linear", "class_weight": "balanced"},
         classifier_CV_ranges={"C": np.logspace(-4, 4, 9, base=4)}, classifier_CV_folds=5,
-        scoring_functions={"BA": balanced_accuracy_score},#lambda y_true, y_pred: 0.99},
-        main_scoring_function="BA", main_scoring_threshold=0.65
+        scoring_functions={"TPR": TPR, "TNR": TNR, "min_TPR_TNR": min_TPR_TNR},
+        main_scoring_function="min_TPR_TNR", main_scoring_threshold=0.65
     ):
         '''
         df: pandas dataframe. Rows represent samples, columns represent features (e.g. genes).
@@ -37,7 +37,6 @@ class ExhaustivePipeline:
             -  "n": number of features for feature selection
             -  "k": tuple size for exhaustive search
         '''
-        # TODO: add default values for scoring functions
 
         self.df = df
         self.n_k = n_k
