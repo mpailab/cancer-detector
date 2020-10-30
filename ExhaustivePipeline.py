@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 
 from multiprocessing import Pool
+import time
 import math
 import itertools
 from natsort import natsorted
@@ -17,7 +18,7 @@ from AccuracyMetrics import TPR, TNR, min_TPR_TNR
 
 class ExhaustivePipeline:
     def __init__(
-        self, df, n_k, n_processes=1,
+        self, df, n_k, n_processes=1, verbose=True,
         feature_pre_selector=None, feature_pre_selector_kwargs={},
         feature_selector=t_test, feature_selector_kwargs={},
         preprocessor=StandardScaler, preprocessor_kwargs={},
@@ -41,6 +42,7 @@ class ExhaustivePipeline:
         self.df = df
         self.n_k = n_k
         self.n_processes = n_processes
+        self.verbose = verbose
 
         self.feature_pre_selector = feature_pre_selector
         self.feature_pre_selector_kwargs = feature_pre_selector_kwargs
@@ -70,6 +72,7 @@ class ExhaustivePipeline:
         df_pre_selected = self.df[features + ["Class", "Dataset", "Dataset type"]].copy()
 
         # Start iterating over n, k pairs
+        all_result_dfs = []
         for n, k in zip(self.n_k["n"], self.n_k["k"]):
             features = self.feature_selector(df_pre_selected, n, **self.feature_selector_kwargs)
             df_selected = df_pre_selected[features + ["Class", "Dataset", "Dataset type"]].copy()
@@ -82,12 +85,21 @@ class ExhaustivePipeline:
                 end = chunk_size * (i + 1) if i < self.n_processes - 1 else len(feature_subsets)
                 process_args.append((df_selected, feature_subsets[start:end]))
 
+            start_time = time.time()
+
             with Pool(self.n_processes) as p:
                 process_results = p.map(self.exhaustive_search_over_chunk, process_args, chunksize=1)
 
-            df_results = pd.concat(process_results, axis=0)
+            df_n_k_results = pd.concat(process_results, axis=0)
+            df_n_k_results["n"] = n
+            df_n_k_results["k"] = k
+            all_result_dfs.append(df_n_k_results)
 
-            return df_results
+            end_time = time.time()
+            if self.verbose:
+                print("Pipeline iteration finished in {} seconds for n={}, k={} (n_processes = {})".format(end_time - start_time, n, k, self.n_processes))
+
+        return pd.concat(all_result_dfs, axis=0)
 
     def exhaustive_search_over_chunk(self, args):
         # args is a tuple, this is how multiprocessing works
