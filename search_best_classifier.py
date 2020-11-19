@@ -3,8 +3,9 @@ import numpy as np
 
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
 
 from ExhaustivePipeline import ExhaustivePipeline
 from FeaturePreSelectors import from_file
@@ -52,13 +53,29 @@ if __name__ == "__main__":
             # Random forest
             "classifier": RandomForestClassifier,
             "classifier_kwargs": {
-                "n_estimators": 100,  # TODO: Number of trees. Should we cross-validate this? Which range to use?
-                "max_depth": None,  # TODO: Maximum depth of a tree. Should we use this parameter? Should we cross-validate this? Which range to use?
-                "max_features": "sqrt",  # Size of feature subset for each tree. Sqrt, log or a fraction. Should we cross-validate this? Which range to use?
-                "max_samples": None,  # Size of a training set subset for each tree. Should we cross-validate this? Which range to use?
-                "class_weight": "balanced"
+                "n_estimators": 100,  # TODO: some papers say that 100 will be sufficient, some say 500. Check 500
+                "class_weight": "balanced",
             },
-            "classifier_CV_ranges": {}
+            "classifier_CV_ranges": {
+                "max_features": ["log2", "sqrt", 1/3],
+                "max_samples": [0.2, 0.55, 0.9]
+            }
+        },
+        {
+            # Gradient boosting
+            "classifier": XGBClassifier,
+            "classifier_kwargs": {
+                "objective": "binary:logistic",
+                "n_estimators": 100,  # Number of boosting rounds
+                "max_depth": 3,  # Maximum tree depth
+                "learning_rate": 0.1,  # Learning rate (eta)
+                "verbosity": 0,
+                # TODO: extend me...
+            },
+            "classifier_CV_ranges": {
+                "max_features": ["log2", "sqrt", 1/3],
+                "max_samples": [0.2, 0.55, 0.9]
+            }
         }
     ]
 

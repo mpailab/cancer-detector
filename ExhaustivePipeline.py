@@ -142,7 +142,7 @@ class ExhaustivePipeline:
             classifier = self.classifier(**self.classifier_kwargs, **best_params)
             classifier.fit(X_train, y_train)
 
-            item = {"Features subset": features_subset, "Scores": {}}
+            item = {"Features subset": features_subset, "Best parameters": best_params, "Scores": {}}
             filtration_passed = True
             for dataset, dataset_type in df_selected[["Dataset", "Dataset type"]].drop_duplicates().to_numpy():
                 df_test = df_selected.loc[df_selected["Dataset"] == dataset, features_subset + ["Class"]]
@@ -165,15 +165,21 @@ class ExhaustivePipeline:
 
             if filtration_passed:
                 results.append(item)
+        
+        score_cols = ["{};{}".format(dataset, s) for dataset in natsorted(np.unique(df_selected["Dataset"])) for s in self.scoring_functions]
+        parameter_cols = list(self.classifier_CV_ranges)
 
         df_results = pd.DataFrame(
-            columns=["{};{}".format(dataset, s) for dataset in natsorted(np.unique(df_selected["Dataset"])) for s in self.scoring_functions]
+            columns=score_cols + parameter_cols
         )
         for item in results:
             index = ";".join(item["Features subset"])
             for dataset in item["Scores"]:
                 for s in item["Scores"][dataset]:
                     df_results.loc[index, "{};{}".format(dataset, s)] = item["Scores"][dataset][s]
+            
+            for parameter in parameter_cols:
+                df_results.loc[index, parameter] = item["Best parameters"][parameter]
 
         return df_results
 
