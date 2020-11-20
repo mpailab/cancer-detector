@@ -68,14 +68,14 @@ if __name__ == "__main__":
             "classifier_kwargs": {
                 "objective": "binary:logistic",
                 "eval_metric": "logloss",  # TODO: maybe min(TPR, TNR)? Or this is important?
-                "verbosity": 0,
+                "verbosity": 0
             },
             "classifier_CV_ranges": {
                 "subsample": [0.6, 0.7, 0.8],
                 "n_estimators": [500, 1000, 1500],  # Number of boosting rounds
                 "max_depth": [6, 8],  # Maximum tree depth
                 "learning_rate": [0.001, 0.005, 0.01],  # Learning rate (eta)
-                "early_stopping_rounds"= [20, 50]
+                "early_stopping_rounds": [20, 50]
             }
         }
     ]
