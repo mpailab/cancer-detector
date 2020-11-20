@@ -66,13 +66,13 @@ if __name__ == "__main__":
             "classifier": XGBClassifier,
             "classifier_kwargs": {
                 "objective": "binary:logistic",
-                "n_estimators": [500, 1000, 1500]  # Number of boosting rounds
-                "max_depth": [6, 8]  # Maximum tree depth
+                "n_estimators": [500, 1000, 1500],  # Number of boosting rounds
+                "max_depth": [6, 8],  # Maximum tree depth
                 "learning_rate": [0.001, 0.005, 0.01],  # Learning rate (eta)
                 "verbosity": 0,
                 "subsample": [0.6, 0.7, 0.8],
                 "eval_metric": "logloss",
-                "early_stopping_rounds"= [20, 50]
+                "early_stopping_rounds": [20, 50],
                 # TODO: extend me...
             },
             "classifier_CV_ranges": {
