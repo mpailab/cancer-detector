@@ -42,11 +42,12 @@ if __name__ == "__main__":
             # kNN
             "classifier": KNeighborsClassifier,
             "classifier_kwargs": {
-                "weights": "uniform",  # TODO: "uniform" or "distance"?
-                "metric": "minkowski"  # TODO: custom function with weighting proportionally to classes
+                "weights": "distance"
             },
+
             "classifier_CV_ranges": {
-                "n_neighbors": [1, 3, 5, 7, 9]  # TODO: which range to use there?
+                "p": [1, 2],  # L1 and L2 metric
+                "n_neighbors": list(range(1, int(sqrt(154)) + 1))  # 154 is the size of the traning set
             }
         },
         {
@@ -66,18 +67,15 @@ if __name__ == "__main__":
             "classifier": XGBClassifier,
             "classifier_kwargs": {
                 "objective": "binary:logistic",
-                "n_estimators": [500, 1000, 1500]  # Number of boosting rounds
-                "max_depth": [6, 8]  # Maximum tree depth
-                "learning_rate": [0.001, 0.005, 0.01],  # Learning rate (eta)
+                "eval_metric": "logloss",  # TODO: maybe min(TPR, TNR)? Or this is important?
                 "verbosity": 0,
-                "subsample": [0.6, 0.7, 0.8],
-                "eval_metric": "logloss",
-                "early_stopping_rounds"= [20, 50]
-                # TODO: extend me...
             },
             "classifier_CV_ranges": {
-                "max_features": ["log2", "sqrt", 1/3],
-                "max_samples": [0.2, 0.55, 0.9]
+                "subsample": [0.6, 0.7, 0.8],
+                "n_estimators": [500, 1000, 1500],  # Number of boosting rounds
+                "max_depth": [6, 8],  # Maximum tree depth
+                "learning_rate": [0.001, 0.005, 0.01],  # Learning rate (eta)
+                "early_stopping_rounds"= [20, 50]
             }
         }
     ]
