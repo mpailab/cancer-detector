@@ -18,7 +18,7 @@ from AccuracyMetrics import TPR, TNR, min_TPR_TNR
 
 class ExhaustivePipeline:
     def __init__(
-        self, df, n_k, n_processes=1, verbose=True,
+        self, df, n_k, n_processes=1, random_state=None, verbose=True,
         feature_pre_selector=None, feature_pre_selector_kwargs={},
         feature_selector=t_test, feature_selector_kwargs={},
         preprocessor=StandardScaler, preprocessor_kwargs={},
@@ -42,6 +42,7 @@ class ExhaustivePipeline:
         self.df = df
         self.n_k = n_k
         self.n_processes = n_processes
+        self.random_state = random_state
         self.verbose = verbose
 
         self.feature_pre_selector = feature_pre_selector
@@ -120,10 +121,10 @@ class ExhaustivePipeline:
             X_train = preprocessor.transform(X_train)
 
             # Fit classifier with CV search of unknown parameters
-            classifier = self.classifier(**self.classifier_kwargs)
+            classifier = self.classifier(random_state=self.random_state, **self.classifier_kwargs)
 
             # TODO: seed as pipeline parameter
-            splitter = StratifiedKFold(n_splits=self.classifier_CV_folds, shuffle=True, random_state=17)
+            splitter = StratifiedKFold(n_splits=self.classifier_CV_folds, shuffle=True, random_state=self.random_state)
             searcher = GridSearchCV(
                 classifier,
                 self.classifier_CV_ranges,
@@ -139,7 +140,7 @@ class ExhaustivePipeline:
             best_params = {param: all_params[best_ind][param] for param in all_params[best_ind]}
 
             # Refit classifier with best parameters
-            classifier = self.classifier(**self.classifier_kwargs, **best_params)
+            classifier = self.classifier(random_state=self.random_state, **self.classifier_kwargs, **best_params)
             classifier.fit(X_train, y_train)
 
             item = {"Features subset": features_subset, "Best parameters": best_params, "Scores": {}}
@@ -182,75 +183,3 @@ class ExhaustivePipeline:
                 df_results.loc[index, parameter] = item["Best parameters"][parameter]
 
         return df_results
-
-
-def feature_pre_selector_template(df, **kwargs):
-    '''
-    Input expression dataframe, return list of features
-    TODO: special function which load genes from specified file
-    '''
-    pass
-
-
-def feature_selector_template(df, n, **kwargs):
-    '''
-    Input expression dataframe and number n, return list
-    of n selected features
-    TODO: for supervised feature selection one should also pass
-    subset of datasets for feature selection
-    '''
-    pass
-
-
-class Preprocessor_template:
-    '''
-    This class should have three methods:
-        -  __init__
-        -  fit
-        -  transform
-    Any sklearn classifier preprocessor be suitable
-    '''
-    def __init__(self, **kwargs):
-        pass
-
-    def fit(self, X):
-        pass
-
-    def transform(self, X):
-        pass
-
-
-class Classifier_template:
-    '''
-    This class should have three methods:
-        -  __init__
-        -  fit
-        -  predict
-    Any sklearn classifier will be suitable
-    '''
-    def __init__(self, **kwargs):
-        pass
-
-    def fit(self, X, y):
-        pass
-
-    def predict(self, X):
-        pass
-
-
-if __name__ == "__main__":
-    import sys
-    df = pd.read_csv(sys.argv[1], sep="\t", index_col=0)
-    #n_k = pd.DataFrame({"n": [10, 10], "k": [8, 9]})  # Several seconds test
-    n_k = pd.read_csv("n_k.tsv", sep="\t")
-    n_processes = 4
-
-    import time
-    for _, row in n_k.iterrows():
-        n_k_subdf = pd.DataFrame({"n": [row["n"]], "k": [row["k"]]})
-
-        start_time = time.time()
-        pipeline = ExhaustivePipeline(df, n_k_subdf, n_processes=n_processes)
-        results = pipeline.run()
-        end_time = time.time()
-        print("Pipeline finished in {} seconds for n={}, k={} (n_processes = {})".format(end_time - start_time, row["n"], row["k"], n_processes))
