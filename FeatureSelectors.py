@@ -14,6 +14,7 @@ TODO: for supervised feature selection one should also pass
 # External imports
 import pandas as pd
 import numpy as np
+from lifelines import CoxPHFitter
 
 from scipy.stats import spearmanr, ttest_ind, ttest_rel
 
@@ -38,16 +39,17 @@ def t_test(df, n, **kwargs):
     datasets = kwargs.get("datasets", None)
     if not datasets:
         # By default, use all datasets except validation one
-        datasets = np.unique(df.loc[df["Dataset type"] != "Validation", "Dataset"])
+        datasets = np.unique(df.loc[df["Dataset_type"] != "Validation", "Dataset"])
 
     df_subset = df.loc[df["Dataset"].isin(datasets)]
-    X = df_subset.drop(columns=["Class", "Dataset", "Dataset type"]).to_numpy()
+    X = df_subset.drop(columns=["Class", "Dataset", "Dataset_type"]).to_numpy()
     y = df_subset["Class"].to_numpy()
 
     t_statistics, pvalues = ttest_ind(X[y == 0], X[y == 1], axis=0)
-    features = df_subset.drop(columns=["Class", "Dataset", "Dataset type"]).columns
+    features = df_subset.drop(columns=["Class", "Dataset", "Dataset_type"]).columns
 
-    return [feature for feature, pvalue in sorted(zip(features, pvalues), key=lambda x: x[1])][0:n]
+    result =  [feature for feature, pvalue in sorted(zip(features, pvalues), key=lambda x: x[1])][0:n]
+    return result
 
 
 def spearman_correlation(df, n, **kwargs):
@@ -59,14 +61,14 @@ def spearman_correlation(df, n, **kwargs):
     datasets = kwargs.get("datasets", None)
     if not datasets:
         # By default, use all datasets except validation one
-        datasets = np.unique(df.loc[df["Dataset type"] != "Validation", "Dataset"])
+        datasets = np.unique(df.loc[df["Dataset_type"] != "Validation", "Dataset"])
 
     df_subset = df.loc[df["Dataset"].isin(datasets)]
-    X = df_subset.drop(columns=["Class", "Dataset", "Dataset type"]).to_numpy()
+    X = df_subset.drop(columns=["Class", "Dataset", "Dataset_type"]).to_numpy()
     y = df_subset["Class"].to_numpy()
 
     pvalues = [spearmanr(X[:, j], y).pvalue for j in range(X.shape[1])]
-    features = df_subset.drop(columns=["Class", "Dataset", "Dataset type"]).columns
+    features = df_subset.drop(columns=["Class", "Dataset", "Dataset_type"]).columns
 
     return [feature for feature, pvalue in sorted(zip(features, pvalues), key=lambda x: x[1])][0:n]
 
@@ -253,6 +255,34 @@ def linearSVC(df, n, **kwargs):
 
     return genes[ind[:n]]
 
+
+
+def cox_p_test(df, n, t2event, censor,  **kwargs):
+    '''
+    Select n features with respect to p-values of the Cox fitter
+    t2event - time to event (field name)
+    censor - censorship (field name)
+    '''
+
+    datasets = kwargs.get("datasets", None)
+    if not datasets:
+        # By default, use all datasets except validation one
+        datasets = np.unique(df.loc[df["Dataset type"] != "Validation", "Dataset"])
+    
+    df_subset = df.loc[df["Dataset"].isin(datasets)]
+
+    genes = kwargs.get("genes", ['ITGA5', 'APAF1', 'XIAP', 'RBL1'])
+    pvalues = np.zeros(len(genes))
+    for i,g in enumerate(genes):
+        data_cox = df[[censor , t2event,  g]]
+        cph = CoxPHFitter()
+        cph.fit(data_cox, t2event, censor)
+        pvalues[i] = cph.summary['p'][g]
+
+    result =  [gene for gene, pvalue in sorted(zip(genes, pvalues), key = lambda x: x[1])]
+    return result[0:n]
+
+
 ##########################################################################################
 
 HASH = {
@@ -293,11 +323,26 @@ def names ():
     '''
     return list(HASH.keys())
 
+def testCox():
+    DIR=r'D:\Medicine\data\colorectal cancer\survival regression'
+    fname = path.join(DIR, 'annotation.csv')
+    annotation  = pd.read_csv(fname,   sep=',')
+    print(annotation.info())
+    fname_data = path.join(DIR, 'data_filtered.csv')
+    data_filtered  = pd.read_csv(fname_data,   sep=',')
+    print(data_filtered.info())
+    data_join = data_filtered.set_index('ID').join(annotation.set_index('ID'), on='ID')
+    print(data_join.info())
+    tst = cox_p_test(data_join, 3, 'Time to event', 'Event')
+    print(tst)
+
 
 if __name__ == "__main__":
     import sys
-    df = pd.read_csv(sys.argv[1], sep="\t", index_col=0)
+    from os import path
+    testCox()
+    #df = pd.read_csv(sys.argv[1], sep="\t", index_col=0)
 
-    print(df)
-    print(t_test(df, 20))
-    print(spearman_correlation(df, 20))
+    #print(df)
+    #print(t_test(df, 20))
+    #print(spearman_correlation(df, 20))
